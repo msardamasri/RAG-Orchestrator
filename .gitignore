@@ -1,0 +1,86 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# API Keys & Secrets
+.env
+.env.local
+.env.*.local
+*.key
+secrets.yaml
+
+# Vector Database Storage (se regenera)
+qdrant_storage/
+*.qdrant
+chroma_db/
+faiss_index/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+.env/
+
+# Data & Models (archivos grandes)
+*.pdf
+*.csv
+data/raw/
+data/processed/
+models/
+*.h5
+*.pkl
+*.joblib
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+*.sqlite
+*.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Deployment
+.vercel
+.netlify
