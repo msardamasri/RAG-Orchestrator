@@ -5,12 +5,22 @@ class QdrantStorage:
     def __init__(self, url="http://localhost:6333", collection="documents", dim=3072):
         self.client = QdrantClient(url=url, timeout=30)
         self.collection = collection
-        if not self.client.collection_exists(self.collection):
-            self.client.recreate_collection(
-                collection_name=self.collection,
-                vectors_config=VectorParams(size=dim, distance=Distance.COSINE)
-            )
         self.dim = dim
+        
+        if not self.client.collection_exists(self.collection):
+            try:
+                self.client.create_collection(
+                    collection_name=self.collection,
+                    vectors_config=VectorParams(size=dim, distance=Distance.COSINE)
+                )
+                print(f"Created collection: {self.collection}")
+            except Exception as e:
+                print(f"Collection might already exist: {e}")
+                try:
+                    info = self.client.get_collection(self.collection)
+                    print(f"Using existing collection: {self.collection}")
+                except:
+                    raise
 
     def upsert(self, ids, vectors, payloads):
         points = [
@@ -20,12 +30,12 @@ class QdrantStorage:
         self.client.upsert(self.collection, points=points)
 
     def search(self, query_vector, top_k: int = 5):
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=self.collection,
-            query_vector=query_vector,
-            with_payload=True,
-            limit=top_k
-        )
+            query=query_vector,
+            limit=top_k,
+            with_payload=True
+        ).points
         contexts = []
         sources = set()
         for result in results:
