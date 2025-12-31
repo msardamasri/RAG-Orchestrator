@@ -18,8 +18,9 @@ This RAG system addresses these limitations by connecting external document repo
 
 ## System Architecture
 
+## **[Watch Demo Video (3 min)](https://www.youtube.com/watch?v=v4CU7gF6u1g)**
+
 ![System Architecture](docs/architecture.png)
-*Note: Architecture diagram coming soon*
 
 ### RAG Workflow
 
