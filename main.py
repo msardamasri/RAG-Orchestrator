@@ -26,13 +26,13 @@ inngest_client = inngest.Inngest(
     trigger=inngest.TriggerEvent(event="rag/ingest-pdf"),
 )
 async def rag_ingest_pdf(ctx: inngest.Context):
-    def _load(ctx: inngest.Context) -> RAGChunkAndSrc:
-        file_path = ctx.event.data["pdf_file_path"]
-        source_id = ctx.event.data.get("source_id", file_path)
+    async def _load(ctx: inngest.Context) -> RAGChunkAndSrc:
+        file_path = str(ctx.event.data["pdf_file_path"])
+        source_id = str(ctx.event.data.get("source_id", file_path))
         chunks = load_and_chunk_pdf(file_path)
         return RAGChunkAndSrc(chunk=chunks, source_id=source_id)
 
-    def _upsert(chunk_and_src: RAGChunkAndSrc) -> RAGUpsertResult:
+    async def _upsert(chunk_and_src: RAGChunkAndSrc) -> RAGUpsertResult:
         chunks = chunk_and_src.chunk
         source_id = chunk_and_src.source_id
         vectors = embed_texts(chunks)
@@ -50,7 +50,7 @@ async def rag_ingest_pdf(ctx: inngest.Context):
     trigger=inngest.TriggerEvent(event="rag/query_pdf_ai"),
 )
 async def rag_query_pdf_ai(ctx: inngest.Context):
-    def _search(question: str, top_k: int = 5) -> RAGSearchResult:
+    async def _search(question: str, top_k: int = 5) -> RAGSearchResult:
         query_vector = embed_texts([question])[0]
         search_results = QdrantStorage().search(query_vector, top_k)
         return RAGSearchResult(contexts=search_results["contexts"], sources=search_results["sources"])
@@ -68,8 +68,11 @@ async def rag_query_pdf_ai(ctx: inngest.Context):
         "Answer the question based on the context provided."
     )
 
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        raise ValueError("OPENAI_API_KEY environment variable is not set")
     adapter = ai.openai.Adapter(
-        auth_key=os.getenv("OPENAI_API_KEY"),
+        auth_key=openai_api_key,
         model="gpt-4o-mini",
     )
 
