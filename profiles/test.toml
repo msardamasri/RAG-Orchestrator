@@ -1,0 +1,19 @@
+# Offline smoke profile: no models at all. Fake embedder and generator, in-memory store.
+# Only proves the wiring runs; its numbers mean nothing.
+[store]
+kind = "sqlite"
+path = ":memory:"
+
+[embedder]
+kind = "fake"
+
+[chunker]
+kind = "sentences"
+size = 1000
+overlap = 200
+
+[reranker]
+kind = "none"
+
+[generator]
+kind = "fake"

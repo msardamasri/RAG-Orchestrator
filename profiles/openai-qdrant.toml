@@ -1,0 +1,34 @@
+# The original project's stack: OpenAI embeddings and generation, Qdrant in Docker.
+#   uv sync --extra openai --extra qdrant
+#   docker run -p 6333:6333 qdrant/qdrant
+#   export OPENAI_API_KEY=...
+# Qdrant is vector-only here, so retrieval skips the word-search leg.
+max_tokens = 1024
+temperature = 0.2
+
+[store]
+kind = "qdrant"
+url = "http://localhost:6333"
+collection = "documents"
+
+[embedder]
+kind = "openai"
+model = "text-embedding-3-large"
+
+[chunker]
+kind = "sentences"
+size = 1000
+overlap = 200
+
+[reranker]
+kind = "none"
+
+[generator]
+kind = "openai_compat"
+base_url = "https://api.openai.com/v1"
+model = "gpt-4o-mini"
+api_key_env = "OPENAI_API_KEY"
+
+[retrieval]
+vector_k = 20
+top_k = 5

@@ -1,0 +1,42 @@
+# Default profile: everything runs on this machine. No Docker, no API key.
+#   uv sync --extra local
+max_tokens = 400
+temperature = 0.1
+
+[store]
+kind = "sqlite"
+path = "ragcore.db"
+
+[embedder]
+kind = "local"
+model = "intfloat/multilingual-e5-small"
+
+[chunker]
+kind = "sentences"
+size = 1000
+overlap = 200
+
+[reranker]
+kind = "cross_encoder"
+model = "BAAI/bge-reranker-base"
+
+# Any OpenAI-style server. This is the mlx-lm server personal-brain uses (`brain model serve`).
+[generator]
+kind = "openai_compat"
+base_url = "http://127.0.0.1:8742/v1"
+model = "mlx-community/Qwen3.5-4B-MLX-4bit"
+extra_body = { chat_template_kwargs = { enable_thinking = false } }
+
+[retrieval]
+lexical_k = 20
+vector_k = 20
+rerank_candidates = 30
+top_k = 4
+# Below this reranker score for the best chunk, answer "I don't know" without calling the model.
+# Calibrate with `ragcore eval`; it prints the value that best separates answerable from unanswerable.
+min_rerank_score = 0.0
+
+[conversation]
+recent_turns = 6
+summarize_after = 12
+topic_switch_threshold = 0.2
