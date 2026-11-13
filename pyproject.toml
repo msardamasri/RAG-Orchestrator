@@ -39,3 +39,4 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["SIM905"]   # the stopword list reads better as one block of text

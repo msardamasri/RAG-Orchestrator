@@ -145,7 +145,7 @@ def main(argv: list[str] | None = None) -> None:
 
     evaluate = commands.add_parser("eval", aliases=["evaluate"],
                                    help="measure retrieval, refusals, conversations and answers")
-    evaluate.add_argument("--data", default="eval_data", help="folder with corpus/, questions.jsonl, conversations.jsonl")
+    evaluate.add_argument("--data", default="eval_data", help="folder with corpus/ and the two .jsonl files")
     evaluate.add_argument("--rewrite", action="store_true", help="also test the model's follow-up rewrites")
     evaluate.add_argument("--generate", action="store_true", help="also generate and check answers (slow)")
     evaluate.add_argument("--out", default="eval_results")

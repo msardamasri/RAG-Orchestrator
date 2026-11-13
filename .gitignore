@@ -49,3 +49,7 @@ video/
 *.mp4
 *.mov
 *.avi
+# ragcore
+ragcore.db*
+ragcore-memory.db*
+eval_results/

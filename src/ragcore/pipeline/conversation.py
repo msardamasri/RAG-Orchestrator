@@ -34,9 +34,11 @@ CONTINUATION = re.compile(
 
 REWRITE_SYSTEM = (
     "Rewrite the user's latest message as one standalone question that can be understood with no conversation "
-    "history. Replace pronouns and vague references with what they refer to, and include any constraint the "
-    "conversation already established. If the user corrects an earlier message, apply the correction. Keep the "
-    "user's language and intent. Do not answer the question. Reply with the rewritten question only."
+    "history. Replace pronouns and vague references with what they refer to. Change as little as possible: keep "
+    "the user's own words, and do not add details from earlier turns (places, roles, numbers, names) unless the "
+    "message cannot be understood without them. If the user corrects an earlier message, apply the correction. "
+    "If the message is already standalone, repeat it unchanged. Keep the user's language. Do not answer the "
+    "question. Reply with the rewritten question only, as short as the original allows."
 )
 CONSOLIDATE_SYSTEM = (
     "You maintain the memory of a conversation. Given the previous summary and older turns, reply with JSON only: "

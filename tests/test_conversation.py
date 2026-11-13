@@ -39,13 +39,13 @@ def test_switch_markers():
 
 
 def test_follow_up_is_rewritten_before_retrieval(rag):
-    rag.generator = scripted({"Which form do I need for it?": "Which form do I submit before requesting leave absence?"})
+    rag.generator = scripted({"Which form do I need for it?": "Which form do I submit before a leave absence?"})
     state = ConversationState()
     first = rag.chat(state, "How many days of annual leave do employees receive?")
     assert first.standalone_question == first.question and not first.topic_switched
 
     second = rag.chat(state, "Which form do I need for it?")
-    assert second.standalone_question == "Which form do I submit before requesting leave absence?"
+    assert second.standalone_question == "Which form do I submit before a leave absence?"
     assert second.question == "Which form do I need for it?"
     assert "HR-17" in second.hits[0].chunk.text and "HR-17" in second.text
     assert [t.role for t in state.turns] == ["user", "assistant", "user", "assistant"]
