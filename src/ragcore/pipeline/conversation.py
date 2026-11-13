@@ -20,9 +20,10 @@ from ragcore.types import ConversationState, Turn
 
 SWITCH_MARKERS = re.compile(
     r"^\s*(?:(?:ok(?:ay)?|right|thanks|great|perfect|vale|gracias)[,.!]?\s+)?"
-    r"(by the way|btw|different question|another question|unrelated(?: question)?|on another (?:note|topic)|"
-    r"changing (?:the )?(?:topic|subject)|switching (?:topics?|gears)|separately|new topic|"
-    r"otra cosa|otra pregunta|cambiando de tema|por cierto)\b[\s,:.\-]*", re.IGNORECASE)
+    r"(by the way|btw|(?:a )?(?:different|another|new|next|unrelated) (?:question|topic|subject|thing)|unrelated|"
+    r"on another (?:note|topic)|changing (?:the )?(?:topic|subject)|switching (?:topics?|gears)|separately|"
+    r"moving on|one (?:last|more) (?:thing|question|area|topic)|"
+    r"otra cosa|otra pregunta|otro tema|cambiando de tema|por cierto)\b[\s,:.\-]*", re.IGNORECASE)
 REFERENCES = re.compile(
     r"\b(it|its|they|them|their|that|this|those|these|one|ones|there|then|he|she|him|her|former|latter|same|"
     r"eso|esa|ese|esto|esta|este|esos|esas|ello|ellos|ellas|ahí|entonces|lo|la|los|las|mismo|misma)\b",
@@ -50,7 +51,7 @@ CONSOLIDATE_SYSTEM = (
 class ConversationSettings:
     recent_turns: int = 6            # user+assistant messages kept verbatim in the prompt
     summarize_after: int = 12        # consolidate once this many messages are not yet summarized
-    topic_switch_threshold: float = 0.2
+    topic_switch_threshold: float = 0.0   # 0 = markers only; see docs before raising
     rewrite_max_tokens: int = 96
 
 
@@ -98,6 +99,8 @@ class Resolved:
     question: str
     rewritten: bool
     topic_switched: bool
+    similarity: float | None = None
+    """Cosine similarity between this question and the running topic (None on the first turn)."""
 
 
 def resolve(message: str, state: ConversationState, *, generator: Generator | None, embed_query,
@@ -105,23 +108,33 @@ def resolve(message: str, state: ConversationState, *, generator: Generator | No
     """Turn a raw message into a standalone question and update the topic state (not the turns)."""
     marker = switch_marker(message)
     first_turn = not state.turns
+
+    def similarity_to_topic(vector: Sequence[float]) -> float | None:
+        return None if state.topic_vector is None or first_turn else cosine(vector, state.topic_vector)
+
     if marker:
         question = message[marker.end():].strip() or message
-        _reset_topic(state, embed_query(question))
-        return Resolved(question=question, rewritten=False, topic_switched=not first_turn)
+        vector = embed_query(question)
+        similarity = similarity_to_topic(vector)
+        _reset_topic(state, vector)
+        return Resolved(question=question, rewritten=False, topic_switched=not first_turn, similarity=similarity)
     if first_turn:
         state.topic_vector = list(embed_query(message))
         return Resolved(question=message, rewritten=False, topic_switched=False)
-    if depends_on_context(message):
-        question = rewrite_question(message, state, generator, settings) if generator is not None else message
-        _track_topic(state, embed_query(question))
-        return Resolved(question=question, rewritten=question != message, topic_switched=False)
-    vector = embed_query(message)
-    if state.topic_vector is not None and cosine(vector, state.topic_vector) < settings.topic_switch_threshold:
+    question = message
+    if depends_on_context(message) and generator is not None:
+        question = rewrite_question(message, state, generator, settings)
+    rewritten = question != message
+    vector = embed_query(question)
+    similarity = similarity_to_topic(vector)
+    # A short fragment that could not be rewritten ("And for Stockholm?") says nothing about the topic on its
+    # own, so it is taken as a continuation. Anything else is compared with the running topic.
+    judgeable = rewritten or not depends_on_context(message) or len(message.split()) > 8
+    if judgeable and similarity is not None and similarity < settings.topic_switch_threshold:
         _reset_topic(state, vector)
-        return Resolved(question=message, rewritten=False, topic_switched=True)
+        return Resolved(question=question, rewritten=rewritten, topic_switched=True, similarity=similarity)
     _track_topic(state, vector)
-    return Resolved(question=message, rewritten=False, topic_switched=False)
+    return Resolved(question=question, rewritten=rewritten, topic_switched=False, similarity=similarity)
 
 
 def _reset_topic(state: ConversationState, vector: Sequence[float]) -> None:

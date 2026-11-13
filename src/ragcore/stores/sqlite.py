@@ -20,6 +20,15 @@ from ragcore.types import Chunk, Document, Filters, Hit
 
 SAFE_KEY = re.compile(r"^[A-Za-z0-9_]+$")
 TERM = re.compile(r"\w+(?:-\w+)*", re.UNICODE)
+STOPWORDS = frozenset("""
+a about after all also am an and any are as at be been before but by can could did do does for from had has have
+how i if in into is it its me my no not of on or our should so than that the their them then there these they this
+to up us was we were what when where which who whom why will with would you your
+al algo como con cual cuales cuando cuanto cuanta cuantos cuantas cuál cuáles cuándo cuánto cuánta cuántos cuántas
+cómo de del donde dónde el ella ellas ellos en era es esa ese eso esta este esto está están fue ha hay la las le
+les lo los me mi mis muy más ni no nos o para pero por que qué quien quién se si sin sobre son su sus también te
+tiene tienen tu tus un una uno unas unos ya yo
+""".split())
 
 
 def pack(vector: Sequence[float]) -> bytes:
@@ -32,6 +41,8 @@ def fts_query(text: str) -> str:
     A hyphenated code such as ``EXP-204`` stays one quoted term, which FTS5 reads as the phrase ``EXP 204``.
     """
     terms = [t for t in TERM.findall(text) if len(t) > 1]
+    # Function words match almost every chunk and drown the words that carry the question.
+    terms = [t for t in terms if t.lower() not in STOPWORDS] or terms
     return " OR ".join('"' + t.replace('"', '""') + '"' for t in dict.fromkeys(terms))
 
 

@@ -31,7 +31,7 @@ class RagConfig(BaseModel):
         default_factory=lambda: {"kind": "local", "model": "intfloat/multilingual-e5-small"})
     chunker: dict[str, Any] = Field(default_factory=lambda: {"kind": "sentences", "size": 1000, "overlap": 200})
     reranker: dict[str, Any] = Field(
-        default_factory=lambda: {"kind": "cross_encoder", "model": "BAAI/bge-reranker-base"})
+        default_factory=lambda: {"kind": "cross_encoder", "model": "BAAI/bge-reranker-v2-m3"})
     generator: dict[str, Any] | None = None
     retrieval: dict[str, Any] = Field(default_factory=dict)
     conversation: dict[str, Any] = Field(default_factory=dict)

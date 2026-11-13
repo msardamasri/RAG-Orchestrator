@@ -18,7 +18,7 @@ overlap = 200
 
 [reranker]
 kind = "cross_encoder"
-model = "BAAI/bge-reranker-base"
+model = "BAAI/bge-reranker-v2-m3"   # "BAAI/bge-reranker-base" is 4x faster and clearly worse
 
 # Any OpenAI-style server. This is the mlx-lm server personal-brain uses (`brain model serve`).
 [generator]
@@ -30,7 +30,7 @@ extra_body = { chat_template_kwargs = { enable_thinking = false } }
 [retrieval]
 lexical_k = 20
 vector_k = 20
-rerank_candidates = 30
+rerank_candidates = 20
 top_k = 4
 # Below this reranker score for the best chunk, answer "I don't know" without calling the model.
 # Calibrate with `ragcore eval`; it prints the value that best separates answerable from unanswerable.
@@ -39,4 +39,6 @@ min_rerank_score = 0.0
 [conversation]
 recent_turns = 6
 summarize_after = 12
-topic_switch_threshold = 0.2
+# 0 = only explicit markers ("by the way", "different question"...) start a new topic. Similarity to the
+# running topic did not separate switches from follow-ups with e5-small; `ragcore eval` prints the ranges.
+topic_switch_threshold = 0.0

@@ -65,7 +65,7 @@ def test_prune_removes_documents_missing_from_a_full_run(rag, store):
 def test_lexical_search_finds_exact_codes(store, rag):
     hits = store.search_lexical("What does EXP-204 mean?", 5)
     assert hits and "EXP-204" in hits[0].chunk.text
-    assert fts_query('what "is" EXP-204 OR') == '"what" OR "is" OR "EXP-204" OR "OR"'
+    assert fts_query('say "hello" EXP-204') == '"say" OR "hello" OR "EXP-204"'
     assert store.search_lexical('"; DROP TABLE chunks; --', 5) == []
     assert store.count() > 0
 
