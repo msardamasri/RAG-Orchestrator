@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+
 import pytest
 
-from ragcore.chunkers.sentences import QAPairChunker, SentenceChunker, chunk_id
+from ragcore.chunkers.sentences import QAPairChunker, SentenceChunker, chunk_id, split_sentences
 from ragcore.loaders.files import FileLoader
 from ragcore.loaders.records import RecordLoader, conversation_documents
+from ragcore.pipeline.rag import Rag
 from ragcore.stores.sqlite import SQLiteStore, fts_query
 from ragcore.types import Document
 from tests.conftest import DOCS
+
+SAMPLE_PDF = Path(__file__).resolve().parents[1] / "eval_data" / "corpus" / "mobility-programme.pdf"
 
 
 def test_chunks_follow_headings_and_keep_them():
@@ -30,6 +36,37 @@ def test_chunker_never_cuts_mid_sentence_and_overlaps():
         assert all(line in sentences for line in chunk.text.split("\n"))
     first_lines, second_lines = chunks[0].text.split("\n"), chunks[1].text.split("\n")
     assert first_lines[-1] == second_lines[0]          # the overlap carries the last sentence forward
+
+
+def test_hash_lines_inside_code_blocks_are_not_headings():
+    text = ("# Guide\n\n## Setup\n\n```bash\n# install deps\nmake bootstrap\n```\n\nThen run make doctor.\n\n"
+            "~~~\n## not a heading either\n~~~\n\n  ## Tests ##\n\nRun make test.")
+    chunks = SentenceChunker(size=1000, overlap=0).chunk(Document(id="g.md", text=text))
+    assert [c.metadata["section"] for c in chunks] == ["Guide > Setup", "Guide > Tests"]
+    assert "# install deps\nmake bootstrap\n```" in chunks[0].text           # the code block stays whole
+    assert "## not a heading either" in chunks[0].text
+
+
+def test_long_text_without_full_stops_is_cut_between_lines_with_overlap():
+    rows = [f"Category {i} BC-{1000 + i} Owner {i}" for i in range(60)]     # a table as pypdf extracts it
+    chunks = SentenceChunker(size=200, overlap=60).chunk(Document(id="t.pdf", text="\n".join(rows)))
+    assert len(chunks) > 5
+    for chunk in chunks:
+        assert len(chunk.text) <= 200
+        assert all(line in rows for line in chunk.text.split("\n"))      # no row is ever cut
+    assert chunks[1].text.split("\n")[0] in chunks[0].text.split("\n")       # neighbours overlap by whole rows
+
+
+def test_a_single_long_line_is_cut_between_words():
+    words = [f"word{i}" for i in range(300)]
+    chunks = SentenceChunker(size=120, overlap=0).chunk(Document(id="w.txt", text=" ".join(words)))
+    pieces = [token for chunk in chunks for token in chunk.text.split()]
+    assert all(len(chunk.text) <= 120 for chunk in chunks) and pieces == words
+
+
+def test_numbered_headings_are_not_sentence_ends():
+    assert split_sentences("Paid within 5 days.\n9. Budget codes Use the code. The cap is 40. Above it, ask.") == [
+        "Paid within 5 days.", "9. Budget codes Use the code.", "The cap is 40.", "Above it, ask."]
 
 
 def test_chunk_ids_are_stable():
@@ -111,3 +148,47 @@ def test_file_and_record_loaders(tmp_path):
     windows = list(conversation_documents(messages, window=4, overlap=1))
     assert [d.id for d in windows] == ["c1:0", "c1:3", "c1:6"]
     assert windows[1].text.splitlines()[0] == "me: m3" and windows[-1].text.endswith("m9")
+
+
+def test_an_unreadable_file_is_reported_and_does_not_stop_the_load(tmp_path):
+    (tmp_path / "good.md").write_text("# Good\n\nhello")
+    (tmp_path / "broken.pdf").write_bytes(b"this is not a pdf")
+    loader = FileLoader(tmp_path)
+    assert [d.id for d in loader.load()] == ["good.md"]
+    assert list(loader.failed) == ["broken.pdf"]
+
+
+def test_prune_keeps_what_was_stored_for_a_file_that_now_fails(tmp_path, store, embedder):
+    rag = Rag(store=store, embedder=embedder, chunker=SentenceChunker())
+    (tmp_path / "notes.md").write_text("# Notes\n\nThe meal limit is 40 euros.")
+    shutil.copy(SAMPLE_PDF, tmp_path / "mobility.pdf")
+    assert rag.ingest(FileLoader(tmp_path)).ingested == 2
+
+    (tmp_path / "mobility.pdf").write_bytes(b"%PDF-1.4 truncated by a failed download")
+    report = rag.ingest(FileLoader(tmp_path), prune=True)
+    assert list(report.failed) == ["mobility.pdf"] and report.removed == 0
+    assert store.document_ids() == ["mobility.pdf", "notes.md"]
+    assert store.search_lexical("BikeLane", 5)          # the old text is still searchable
+
+    (tmp_path / "mobility.pdf").unlink()                 # a file that is really gone is still pruned
+    assert rag.ingest(FileLoader(tmp_path), prune=True).removed == 1
+
+
+def test_a_pdf_without_text_is_reported_as_empty(tmp_path, store, embedder):
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    with open(tmp_path / "scan.pdf", "wb") as handle:
+        writer.write(handle)
+    report = Rag(store=store, embedder=embedder, chunker=SentenceChunker()).ingest(FileLoader(tmp_path))
+    assert report.empty == ["scan.pdf"] and report.ingested == 0 and not report.failed
+
+
+def test_loader_skips_hidden_folders_and_reads_a_byte_order_mark(tmp_path):
+    (tmp_path / "bom.md").write_text("﻿# Title\n\n## Part\n\nSome text.", encoding="utf-8")
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv" / "readme.md").write_text("# Not mine")
+    documents = list(FileLoader(tmp_path).load())
+    assert [d.id for d in documents] == ["bom.md"]
+    assert SentenceChunker().chunk(documents[0])[0].metadata["section"] == "Title > Part"

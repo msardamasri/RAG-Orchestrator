@@ -65,6 +65,11 @@ def cmd_ingest(args: argparse.Namespace) -> None:
     report = rag.ingest(FileLoader(args.path), prune=args.prune)
     print(f"{report.documents} documents: {report.ingested} ingested ({report.chunks} chunks), "
           f"{report.skipped} unchanged, {report.removed} removed. Store now holds {rag.store.count()} chunks.")
+    for doc_id in report.empty:
+        hint = " (a scanned PDF? it needs OCR first)" if doc_id.lower().endswith(".pdf") else ""
+        print(f"  no text in {doc_id}{hint}")
+    for doc_id, reason in report.failed.items():
+        print(f"  could not read {doc_id}: {reason} (what was stored for it before is kept)")
 
 
 def cmd_search(args: argparse.Namespace) -> None:

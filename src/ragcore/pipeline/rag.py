@@ -28,9 +28,16 @@ class Rag:
 
     # -- ingest -----------------------------------------------------------------------------------
     def ingest(self, source: Loader | Iterable[Document], prune: bool = False) -> IngestReport:
+        """Store what ``source`` yields. A loader with a ``failed`` dict (like ``FileLoader``) has those files
+        reported in ``IngestReport.failed`` and protected from ``prune``."""
         documents = source.load() if hasattr(source, "load") else source
-        return ingest(documents, chunker=self.chunker, embedder=self.embedder, store=self.store,
-                      fingerprint=self.fingerprint, prune=prune)
+        failed = getattr(source, "failed", None)
+        if not isinstance(failed, dict):
+            failed = {}              # the loader's own dict is kept (not copied): it fills while loading
+        report = ingest(documents, chunker=self.chunker, embedder=self.embedder, store=self.store,
+                        fingerprint=self.fingerprint, prune=prune, keep=failed)
+        report.failed = dict(failed)
+        return report
 
     # -- single question --------------------------------------------------------------------------
     def retrieve(self, query: str, filters: Filters | None = None, mode: RetrievalMode = "hybrid",

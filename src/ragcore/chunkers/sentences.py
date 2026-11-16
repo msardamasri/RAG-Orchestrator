@@ -1,7 +1,8 @@
 """Chunk by section, paragraph and sentence, never mid-sentence, with overlap between neighbours.
 
 Markdown headings start a new chunk and travel with it (``Title > Section`` is the chunk's first line), so a
-chunk keeps the context that says what it is about. Sizes are in characters.
+chunk keeps the context that says what it is about. Lines inside fenced code blocks are never headings. Sizes
+are in characters.
 """
 
 from __future__ import annotations
@@ -11,8 +12,15 @@ import uuid
 
 from ragcore.types import Chunk, Document
 
-HEADING = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
-SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ¿¡\"'(\[0-9])")
+# Up to three spaces of indent, then 1-6 '#'; closing '#'s are not part of the title (CommonMark).
+HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$")
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+# A sentence ends at . ! or ? followed by a capital, a digit or an opening mark, except after a list or section
+# number at the start of a line ("1. Scope", "12. Exceptions"), which starts a sentence instead of ending one.
+SENTENCE_END = re.compile(
+    r"(?<=[.!?])(?<!^\d\.)(?<!^\d\d\.)(?<!\n\d\.)(?<!\n\d\d\.)\s+(?=[A-ZÁÉÍÓÚÑ¿¡\"'(\[0-9])")
+# Where a unit that is still too long may be cut, best first: a line break, a clause, a word.
+SPLIT_POINTS = ("\n", "; ", ", ", " ")
 QA_START = re.compile(r"^\s*(?:Q|Question|P|Pregunta)\s*[:.]\s*", re.IGNORECASE)
 
 
@@ -37,7 +45,20 @@ def _sections(text: str) -> list[tuple[str, str]]:
             sections.append((" > ".join(title for _, title in path), content))
         body.clear()
 
+    fence = ""                                   # the marker that opened the current code block, if any
     for line in text.splitlines():
+        opener = FENCE.match(line)
+        if fence:
+            body.append(line)
+            # A fence closes with the same character, at least as long, and nothing else on the line.
+            if opener and opener.group(1)[0] == fence[0] and len(opener.group(1)) >= len(fence) \
+                    and not line.strip().lstrip(fence[0]):
+                fence = ""
+            continue
+        if opener:
+            fence = opener.group(1)
+            body.append(line)
+            continue
         match = HEADING.match(line)
         if match:
             flush()
@@ -51,8 +72,46 @@ def _sections(text: str) -> list[tuple[str, str]]:
     return sections
 
 
+def split_long(text: str, size: int, points: tuple[str, ...] = SPLIT_POINTS) -> list[str]:
+    """Pieces of at most ``size`` characters, cut at the best split point available.
+
+    Lines become separate pieces, so table rows and list items stay whole and the chunker can still overlap
+    them. A single line that is too long is cut at clauses, then words, and only cut mid-word when one word
+    alone is longer than ``size``.
+    """
+    text = text.strip()
+    if len(text) <= size:
+        return [text] if text else []
+    if not points:
+        return [text[i:i + size] for i in range(0, len(text), size)]
+    point, finer = points[0], points[1:]
+    if point not in text:
+        return split_long(text, size, finer)
+    if point == "\n":
+        return [piece for line in text.split("\n") for piece in split_long(line, size, finer)]
+    trail = point.rstrip()                      # the "," or ";" a piece keeps where it is cut
+    pieces: list[str] = []
+    current = ""
+    for part in text.split(point):
+        candidate = f"{current}{point}{part}" if current else part
+        if len(candidate) + len(trail) <= size:
+            current = candidate
+            continue
+        if current:
+            pieces.append(current.strip() + trail)
+        current = ""
+        if len(part) + len(trail) <= size:
+            current = part
+        else:
+            pieces.extend(split_long(part, size, finer))
+    if current.strip():
+        pieces.append(current.strip())
+    return pieces
+
+
 def _units(body: str, size: int) -> list[str]:
-    """Paragraphs, split further into sentences (then hard-cut) only when a paragraph alone exceeds ``size``."""
+    """Paragraphs, split into sentences only when a paragraph alone exceeds ``size``, and a sentence that is
+    still too long (a table, a list without full stops) split by ``split_long``."""
     units: list[str] = []
     for paragraph in re.split(r"\n\s*\n", body):
         paragraph = paragraph.strip()
@@ -62,11 +121,7 @@ def _units(body: str, size: int) -> list[str]:
             units.append(paragraph)
             continue
         for sentence in split_sentences(paragraph):
-            while len(sentence) > size:
-                units.append(sentence[:size])
-                sentence = sentence[size:]
-            if sentence:
-                units.append(sentence)
+            units.extend(split_long(sentence, size))
     return units
 
 

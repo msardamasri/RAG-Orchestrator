@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable
+from collections.abc import Container, Iterable
 from dataclasses import dataclass, field
 
 from ragcore.interfaces import Chunker, Embedder, Store
@@ -19,6 +19,9 @@ class IngestReport:
     removed: int = 0
     chunks: int = 0
     empty: list[str] = field(default_factory=list)
+    """Documents that produced no text; whatever was stored for them before is removed."""
+    failed: dict[str, str] = field(default_factory=dict)
+    """Documents the loader could not read (id → reason); what was stored for them before is kept."""
 
 
 def content_hash(document: Document, fingerprint: str) -> str:
@@ -28,9 +31,11 @@ def content_hash(document: Document, fingerprint: str) -> str:
 
 
 def ingest(documents: Iterable[Document], *, chunker: Chunker, embedder: Embedder, store: Store,
-           fingerprint: str = "", prune: bool = False) -> IngestReport:
+           fingerprint: str = "", prune: bool = False, keep: Container[str] = ()) -> IngestReport:
     """Store ``documents``. With ``prune``, documents the store holds that are not in this run are removed
-    (use it when the run covers the whole corpus, never for a partial update)."""
+    (use it when the run covers the whole corpus, never for a partial update). Ids in ``keep`` are never
+    pruned: a loader passes the files it failed to read, which still exist. ``keep`` is checked after
+    ``documents`` has been consumed, so it may be filled while they load."""
     report = IngestReport()
     seen: set[str] = set()
     for document in documents:
@@ -51,7 +56,7 @@ def ingest(documents: Iterable[Document], *, chunker: Chunker, embedder: Embedde
         report.chunks += len(chunks)
     if prune and hasattr(store, "document_ids"):
         for doc_id in store.document_ids():
-            if doc_id not in seen:
+            if doc_id not in seen and doc_id not in keep:
                 store.delete_document(doc_id)
                 report.removed += 1
     return report
