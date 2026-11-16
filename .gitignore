@@ -25,6 +25,7 @@ qdrant_storage/
 # Uploaded Documents (user files)
 uploaded_docs/
 *.pdf
+!eval_data/corpus/*.pdf
 
 # Generated Evaluation Files
 evaluation_*.json
@@ -49,3 +50,7 @@ video/
 *.mp4
 *.mov
 *.avi
+# ragcore
+ragcore.db*
+ragcore-memory.db*
+eval_results/
