@@ -64,31 +64,39 @@ To build a new brain on this, read [`docs/ADAPTING.md`](docs/ADAPTING.md).
 
 ## Measured results
 
-Bundled dataset ([`eval_data`](eval_data)): a fictional company handbook (10 documents, one in Spanish, 103
-passages), 32 answerable questions (paraphrased, exact codes, Spanish), 8 unanswerable ones and 6 conversations
-(42 turns). Run on an Apple M5 / 16 GB on 13 Nov 2026, default profile, generator Qwen3.5-4B (4-bit, mlx-lm).
+Bundled dataset ([`eval_data`](eval_data)): a fictional company handbook in 13 documents (11 Markdown, one of them
+in Spanish and one full of code blocks, and 2 PDFs with running headers, numbered headings and tables; 122
+passages), 46 answerable questions (paraphrased, exact codes, Spanish, PDF, code guide), 11 unanswerable ones and
+6 conversations (44 turns). Run on an Apple M5 / 16 GB on 16 Nov 2026, default profile, generator Qwen3.5-4B
+(4-bit, mlx-lm).
 
-**Retrieval: did the passage that holds the answer come back?** (32 answerable questions)
+**Retrieval: did the passage that holds the answer come back?** (46 answerable questions)
 
 | Mode | Ranked first | In top 4 | Per query |
 |---|---|---|---|
-| Word search only | 37.5% | 59.4% | 0.2 ms |
-| Vector search only | 68.8% | 93.8% | 5.5 ms |
-| Hybrid | 56.2% | 81.2% | 5.4 ms |
-| **Hybrid + reranker (default)** | **96.9%** | **100%** | 1.2 s |
+| Word search only | 50.0% | 71.7% | 0.2 ms |
+| Vector search only | 69.6% | 91.3% | 6 ms |
+| Hybrid | 67.4% | 84.8% | 6 ms |
+| **Hybrid + reranker (default)** | **95.7%** | **100%** | 1.3–1.5 s |
 
-- Word search alone finds every exact-code question (EXP-204, HR-17…) and a third of the paraphrased ones.
-- Hybrid without the reranker is worse than vector search alone on paraphrased questions: the word-search leg adds
-  noise. The reranker is what makes the fused candidates pay off, and it costs about a second per question.
-- With the smaller `bge-reranker-base`: 75.0% ranked first, 96.9% in top 4, 0.4 s per query.
+- Word search alone finds every exact-code question (EXP-204, HR-17…) but only 39% of the paraphrased ones.
+- Hybrid without the reranker is still worse than vector search alone: the word-search leg adds noise. The reranker
+  is what makes the fused candidates pay off, and it costs over a second per question.
+- With the smaller `bge-reranker-base` (measured on the earlier 40-question set): 75.0% ranked first, 96.9% in top
+  4, 0.4 s per query.
 
-**Answers** (Qwen3.5-4B, 3.6 s per question)
+**Answers** (Qwen3.5-4B, 2.9–3.7 s per question across runs)
 
 | | Result |
 |---|---|
-| Answerable questions answered correctly | 96.9% (31 of 32; the other one was refused) |
+| Answerable questions answered correctly | 93.5% (43 of 46) |
 | Answers citing the passage that holds the answer | 100% |
-| Unanswerable questions refused | 100% (8 of 8) |
+| Unanswerable questions refused | 90.9% (10 of 11) |
+
+The misses: one question refused although its passage was retrieved; two PDF table questions answered with the
+wrong code, because pypdf puts each table cell on its own line and the model paired a category with the
+neighbouring row's code; and one unanswerable question ("how many days does legal need to review a contract?")
+answered with what the policy does say, plus a note that it gives no number of days.
 
 **Conversations** (36 follow-up turns: passage found in top 4)
 
@@ -98,17 +106,38 @@ passages), 32 answerable questions (paraphrased, exact codes, Spanish), 8 unansw
 | The model's rewrite | 100% |
 | A hand-written standalone version | 97.2% |
 
+**What the ingest fixes of 16 Nov changed** (same 57 questions, before and after):
+
+| | Before | After |
+|---|---|---|
+| Hybrid + reranker, passage in top 4 | 97.8% | 100% |
+| PDF questions, passage in top 4 | 90.0% | 100% |
+| Hybrid without reranker, ranked first | 60.9% | 67.4% |
+| Answers citing the right passage | 97.8% | 100% |
+| Unanswerable questions refused | 63.6% | 90.9% |
+| `ragcore ingest eval_data/corpus` | 11.0 s | 6.4 s |
+
+The chunker used to read `# comments` inside code blocks as headings and cut long tables at a fixed length; the
+refusal check let through answers that opened with "I don't know" and then cited sources; and `ingest` loaded the
+reranker it never uses. Answer correctness stayed at 93.5%. Reranking time did not change measurably: back-to-back
+runs vary by about 15% depending on which runs first.
+
 Things that did not work, and are off by default because of it:
 
 - **Refusing before generation from the retrieval score.** The best reranker score did not separate unanswerable
-  questions from answerable ones (best possible split: 85% of questions classified correctly, against 80% for
+  questions from answerable ones (best possible split: 86% of questions classified correctly, against 81% for
   never refusing). Refusals come from the model plus the citation check instead.
 - **Detecting topic switches by similarity.** With the default embedder, similarity to the running topic was
-  0.76–0.96 for follow-ups and 0.83–0.92 at real switches: no threshold separates them. Only explicit markers
+  0.76–0.96 for follow-ups and 0.86–0.89 at real switches: no threshold separates them. Only explicit markers
   ("by the way", "different question"…) start a new topic; they caught 2 of 4 switches with no false alarms.
 
-Caveats: the dataset is small and was written for this repository; the rewrite prompt was adjusted once after
-seeing its failures on these same conversations (86.1% before), so 100% is optimistic. Measure on your own data.
+Caveats: the dataset is small and was written for this repository. The rewrite prompt was adjusted once after
+seeing its failures on these same conversations (86.1% before), so 100% is optimistic. The PDF question q46 was
+picked on the table row the old chunker split, and the three newest unanswerable questions sit close to real
+content. Measure on your own data.
+
+Known gaps: PDF passages carry no heading path, repeated page headers and footers stay in the text, and PDF tables
+lose their row structure (see above).
 
 ## Evaluating
 
@@ -125,12 +154,15 @@ saved as JSON under `eval_results/`. An optional RAGAS judge is in `src/ragcore/
 
 ```bash
 uv sync --extra dev
-uv run pytest          # 43 tests, offline: fake embedder and generator, no model downloads
+uv run pytest          # 54 tests, offline: fake embedder and generator, no model downloads
 uv run ruff check .
+uv run python eval_data/validate.py                  # checks the bundled dataset against its corpus
+uv run --with reportlab python eval_data/make_pdfs.py   # rebuilds the two PDFs after editing their text
 ```
 
 Not exercised live in this version: the Qdrant store and OpenAI embedder (ported from the original code), the
-RAGAS judge, and the two examples under `examples/` (`streamlit_app.py`, `inngest_app.py`).
+RAGAS judge, `examples/inngest_app.py`, and the answering path of `examples/streamlit_app.py` (it was run with
+retrieval only).
 
 ## Layout
 

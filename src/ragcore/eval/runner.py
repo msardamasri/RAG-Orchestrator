@@ -42,6 +42,8 @@ def retrieval_comparison(rag: Rag, questions: Sequence[Question]) -> dict:
             continue
         if mode == "lexical" and not rag.store.supports_lexical:
             continue
+        if answerable:      # untimed warm-up: models that load on first use must not count as query time
+            rag.retrieve(answerable[0].question, mode=mode, rerank=rerank)
         started = time.perf_counter()
         ranks = {q.id: first_relevant_rank(rag.retrieve(q.question, mode=mode, rerank=rerank), q) for q in answerable}
         elapsed = time.perf_counter() - started

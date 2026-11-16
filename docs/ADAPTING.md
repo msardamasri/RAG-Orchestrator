@@ -28,6 +28,9 @@ rag.ingest(conversation_documents(messages, conversation_field="dialog_id", send
 - Put in `metadata` whatever you will want to filter by (`client`, `channel`, `language`, `kind`).
 - `rag.ingest(..., prune=True)` also removes documents that are no longer in the source. Use it only when the run
   covers everything.
+- Check the report: `report.failed` lists files that could not be read (id → reason; what was stored for them is
+  kept, even with `prune`), and `report.empty` lists files with no text, such as scanned PDFs that need OCR.
+  A loader of your own can expose a `failed` dict in the same way to get the same protection.
 
 ## 2. Pick the parts in a profile
 
@@ -103,3 +106,7 @@ Change one part, run again, compare. That is the whole loop.
 - Similarity to the running topic did **not** separate topic switches from follow-ups with the default embedder,
   so `topic_switch_threshold` is `0` (explicit markers only). The evaluation prints both ranges so you can turn it
   on if your embedder separates them.
+- PDFs are the weak spot. pypdf puts each table cell on its own line, so the right passage is found but the model
+  can pair a row's label with the neighbouring row's value (2 of the 10 PDF questions). PDF passages also carry no
+  heading path, and the running header and footer of every page end up in the text. If your brain reads PDFs,
+  add PDF questions with tables to its evaluation set before trusting it.
