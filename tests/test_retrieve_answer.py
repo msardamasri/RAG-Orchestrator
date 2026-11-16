@@ -87,6 +87,10 @@ def test_citations_are_checked_against_supplied_sources():
     assert check_answer("No lo sé.", hits)[2] == "model_declined"
     # A partial answer that cites what it does know is kept.
     assert check_answer("The cap is 5 days [1], but I don't know the deadline.", hits)[2] == ""
+    assert check_answer("I don't know the deadline, but the cap is 5 days [1].", hits)[2] == ""
+    # Opening with "I don't know" and then citing the sources that lack the answer is still a refusal.
+    assert check_answer("I don't know. The sources cover bikes and parking, but nothing about a gym [1][2].",
+                        hits) == (IDK, [], "model_declined")
 
 
 def test_citation_ranges_count_as_citations():

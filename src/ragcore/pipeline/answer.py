@@ -62,9 +62,16 @@ def build_messages(question: str, hits: Sequence[Hit], *, summary: str = "", fac
     return [{"role": "system", "content": system}, *history, {"role": "user", "content": user}]
 
 
+def opens_with_a_refusal(text: str) -> bool:
+    """Whether the first sentence says "I don't know" without citing anything. Models often go on to cite the
+    sources they looked at ("...but there is no information about X [1][2]"), which is still a refusal."""
+    first = re.split(r"(?<=[.!?])\s", text.strip(), maxsplit=1)[0]
+    return bool(DECLINED.search(first)) and not CITATION.search(first)
+
+
 def check_answer(text: str, hits: Sequence[Hit]) -> tuple[str, list[Citation], str]:
     """``(clean text, valid citations, reason)``. A non-empty ``reason`` means: do not show this as grounded."""
-    if DECLINED.search(text) and not CITATION.search(text):
+    if (DECLINED.search(text) and not CITATION.search(text)) or opens_with_a_refusal(text):
         return IDK, [], "model_declined"
     cited: list[int] = []
 
