@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Validate the Northwind Payments evaluation dataset (standard library only).
+"""Validate the Northwind Payments evaluation dataset (standard library, plus pypdf for the PDF files).
 
-Usage: python3 validate.py
+Usage: uv run python eval_data/validate.py
 Exits with status 1 if any check fails.
 """
 import json
@@ -15,12 +15,15 @@ CORPUS = ROOT / "corpus"
 CORPUS_FILES = [
     "leave-policy.md", "expenses.md", "remote-work.md", "security.md",
     "onboarding.md", "travel.md", "equipment.md", "support-sla.md",
-    "pricing.md", "vacaciones-y-festivos.md",
+    "pricing.md", "vacaciones-y-festivos.md", "developer-setup.md",
+    "procurement-policy.pdf", "mobility-programme.pdf",
 ]
 Q_KEYS = {"id", "question", "answerable", "expected_docs", "expected_texts", "answer_contains", "kind"}
 C_KEYS = {"id", "description", "turns"}
 T_KEYS = {"user", "standalone", "topic_switch", "answerable", "expected_docs", "expected_texts", "answer_contains"}
-KIND_COUNTS = {"paraphrase": 18, "exact_term": 8, "spanish": 6, "unanswerable": 8}
+KIND_COUNTS = {"paraphrase": 18, "exact_term": 8, "spanish": 6, "pdf": 10, "code_doc": 4, "unanswerable": 11}
+N_QUESTIONS, N_ANSWERABLE = 57, 46
+MIN_PDF_PAGES = 2
 TURN_COUNTS = {"c01": (4, 5), "c02": (4, 5), "c03": (5, 5), "c04": (4, 4), "c05": (5, 5), "c06": (20, 20)}
 MIN_TEXT, MAX_TEXT = 20, 120
 MIN_WORDS, MAX_WORDS = 500, 900
@@ -76,7 +79,12 @@ def check_evidence(where, item, corpus):
             err(f"{where}: expected text spans several lines: {t!r}")
         if not MIN_TEXT <= len(t) <= MAX_TEXT:
             err(f"{where}: expected text length {len(t)} outside {MIN_TEXT}-{MAX_TEXT}: {t!r}")
-        lines = [ln for d in docs if d in corpus for ln in corpus[d].splitlines()]
+        # PDF lines break wherever the layout wraps, so there the fragment only has to appear with its spaces
+        # normalized (the evaluation itself compares chunk text the same way).
+        pdf_texts = [" ".join(corpus[d].split()) for d in docs if d in corpus and d.endswith(".pdf")]
+        if any(" ".join(t.split()) in text for text in pdf_texts):
+            continue
+        lines = [ln for d in docs if d in corpus and not d.endswith(".pdf") for ln in corpus[d].splitlines()]
         if not any(t in ln for ln in lines):
             err(f"{where}: expected text not found verbatim on one line of {docs}: {t!r}")
 
@@ -84,10 +92,19 @@ def check_evidence(where, item, corpus):
 # ---- corpus -----------------------------------------------------------------
 corpus = {}
 word_counts = {}
-found = sorted(p.name for p in CORPUS.glob("*.md")) if CORPUS.is_dir() else []
+found = sorted(p.name for p in CORPUS.iterdir() if p.suffix in {".md", ".pdf"}) if CORPUS.is_dir() else []
 if found != sorted(CORPUS_FILES):
     err(f"corpus: expected files {sorted(CORPUS_FILES)}, found {found}")
 for name in found:
+    if name.endswith(".pdf"):
+        from pypdf import PdfReader
+
+        pages = [page.extract_text() or "" for page in PdfReader(str(CORPUS / name)).pages]
+        corpus[name] = "\n".join(pages)
+        word_counts[name] = len(corpus[name].split())
+        if len(pages) < MIN_PDF_PAGES:
+            err(f"corpus/{name}: {len(pages)} page(s), the PDFs should have at least {MIN_PDF_PAGES}")
+        continue
     text = (CORPUS / name).read_text(encoding="utf-8")
     corpus[name] = text
     word_counts[name] = len(text.split())
@@ -116,11 +133,12 @@ for q in questions:
     if (q["kind"] == "unanswerable") != (q["answerable"] is False):
         err(f"{where}: kind 'unanswerable' and answerable=false must go together")
     check_evidence(where, q, corpus)
-if len(questions) != 40:
-    err(f"questions: expected 40 lines, got {len(questions)}")
+if len(questions) != N_QUESTIONS:
+    err(f"questions: expected {N_QUESTIONS} lines, got {len(questions)}")
 n_answerable = sum(1 for q in questions if isinstance(q, dict) and q.get("answerable") is True)
-if n_answerable != 32 or len(questions) - n_answerable != 8:
-    err(f"questions: expected 32 answerable / 8 unanswerable, got {n_answerable} / {len(questions) - n_answerable}")
+if n_answerable != N_ANSWERABLE:
+    err(f"questions: expected {N_ANSWERABLE} answerable / {N_QUESTIONS - N_ANSWERABLE} unanswerable, "
+        f"got {n_answerable} / {len(questions) - n_answerable}")
 if dict(kinds) != KIND_COUNTS:
     err(f"questions: kind counts {dict(kinds)} differ from {KIND_COUNTS}")
 for qid, n in q_ids.items():

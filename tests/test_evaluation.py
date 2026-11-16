@@ -17,6 +17,7 @@ from ragcore.eval.metrics import (
     score_ranks,
 )
 from ragcore.eval.runner import format_report, run
+from ragcore.loaders.files import FileLoader
 from ragcore.stores.sqlite import fts_query
 from ragcore.types import Answer, Chunk, Citation, Hit
 
@@ -104,9 +105,10 @@ def test_run_reports_every_part_offline(rag):
 def test_bundled_dataset_loads_and_matches_the_corpus():
     questions = load_questions(ROOT / "eval_data" / "questions.jsonl")
     conversations = load_conversations(ROOT / "eval_data" / "conversations.jsonl")
-    assert len(questions) == 40 and sum(q.answerable for q in questions) == 32
+    assert len(questions) == 57 and sum(q.answerable for q in questions) == 46
     assert len(conversations) == 6 and max(len(c.turns) for c in conversations) == 20
-    corpus = {p.name: " ".join(p.read_text().lower().split()) for p in (ROOT / "eval_data" / "corpus").glob("*.md")}
+    corpus = {d.id: " ".join(d.text.lower().split()) for d in FileLoader(ROOT / "eval_data" / "corpus").load()}
+    assert {"procurement-policy.pdf", "mobility-programme.pdf", "developer-setup.md"} <= set(corpus)
     for q in questions:
         for fragment in q.expected_texts:
             assert any(" ".join(fragment.lower().split()) in corpus[doc] for doc in q.expected_docs), q.id
@@ -126,9 +128,9 @@ def test_cli_end_to_end_offline(tmp_path, capsys):
     profile.write_text((ROOT / "profiles" / "test.toml").read_text().replace(":memory:", str(tmp_path / "s.db")))
     corpus = str(ROOT / "eval_data" / "corpus")
     cli.main(["--profile", str(profile), "ingest", corpus])
-    assert "10 documents: 10 ingested" in capsys.readouterr().out
+    assert "13 documents: 13 ingested" in capsys.readouterr().out
     cli.main(["--profile", str(profile), "ingest", corpus])
-    assert "10 unchanged" in capsys.readouterr().out
+    assert "13 unchanged" in capsys.readouterr().out
     cli.main(["--profile", str(profile), "search", "EXP-204", "--mode", "lexical"])
     assert "expenses.md" in capsys.readouterr().out.splitlines()[0]
     cli.main(["--profile", str(profile), "ask", "What does the rejection code EXP-204 mean?"])

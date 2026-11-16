@@ -25,6 +25,7 @@ qdrant_storage/
 # Uploaded Documents (user files)
 uploaded_docs/
 *.pdf
+!eval_data/corpus/*.pdf
 
 # Generated Evaluation Files
 evaluation_*.json
