@@ -19,15 +19,28 @@ class NoReranker:
 
 
 class CrossEncoderReranker:
-    """A local cross-encoder through sentence-transformers (extra: ``local``). Scores are 0..1."""
+    """A local cross-encoder through sentence-transformers (extra: ``local``). Scores are 0..1.
+
+    The model loads on the first ``rerank`` call, so commands that never rerank (``ingest``, ``search
+    --no-rerank``) do not pay for loading it.
+    """
 
     def __init__(self, model: str = "BAAI/bge-reranker-base", device: str | None = None, batch_size: int = 16,
                  max_length: int = 512):
-        from sentence_transformers import CrossEncoder
-
         self.name = f"cross_encoder:{model}"
-        self.model = CrossEncoder(model, device=device, max_length=max_length)
+        self.model_name = model
+        self.device = device
+        self.max_length = max_length
         self.batch_size = batch_size
+        self._model = None
+
+    @property
+    def model(self):
+        if self._model is None:
+            from sentence_transformers import CrossEncoder
+
+            self._model = CrossEncoder(self.model_name, device=self.device, max_length=self.max_length)
+        return self._model
 
     def rerank(self, query: str, hits: Sequence[Hit], top_k: int) -> list[Hit]:
         if not hits:

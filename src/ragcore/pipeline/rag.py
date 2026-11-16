@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from ragcore.interfaces import Chunker, Embedder, Generator, Loader, Reranker, Store
@@ -41,10 +41,12 @@ class Rag:
 
     # -- single question --------------------------------------------------------------------------
     def retrieve(self, query: str, filters: Filters | None = None, mode: RetrievalMode = "hybrid",
-                 rerank: bool = True) -> list[Hit]:
+                 rerank: bool = True, query_vector: Sequence[float] | None = None) -> list[Hit]:
+        """``query_vector``: the query's embedding when the caller already has it (it must come from
+        ``embedder.embed_query(query)``)."""
         return retrieve(query, store=self.store, embedder=self.embedder,
                         reranker=self.reranker if rerank else None, settings=self.retrieval, filters=filters,
-                        mode=mode)
+                        mode=mode, query_vector=query_vector)
 
     def _require_generator(self) -> Generator:
         if self.generator is None:
@@ -72,7 +74,7 @@ class Rag:
         resolved = self.resolve(message, state)
         if filters is not None:
             state.filters = dict(filters)
-        hits = self.retrieve(resolved.question, state.filters or None)
+        hits = self.retrieve(resolved.question, state.filters or None, query_vector=resolved.vector)
         result = answering.answer(
             resolved.question, hits, generator=generator, weak_evidence=evidence_is_weak(hits, self.retrieval),
             max_tokens=self.max_tokens, temperature=self.temperature, summary=state.summary, facts=state.facts,

@@ -106,7 +106,8 @@ def conversation_eval(rag: Rag, conversations: Sequence[Conversation]) -> dict:
                     ranks["raw"].append(first_relevant_rank(rag.retrieve(turn.user), question))
                     ranks["gold_standalone"].append(first_relevant_rank(rag.retrieve(turn.standalone), question))
                     if use_model:
-                        rank = first_relevant_rank(rag.retrieve(resolved.question), question)
+                        rank = first_relevant_rank(rag.retrieve(resolved.question, query_vector=resolved.vector),
+                                                   question)
                         ranks["model_rewrite"].append(rank)
                         rewrites.append({"turn": question.id, "user": turn.user, "rewritten": resolved.question,
                                          "gold": turn.standalone, "found": rank is not None})

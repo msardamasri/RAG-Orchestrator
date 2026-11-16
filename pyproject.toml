@@ -36,6 +36,7 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 120
 src = ["src", "tests"]
+extend-exclude = ["examples/legacy-demo"]   # the original demo, kept as it was
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]

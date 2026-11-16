@@ -13,7 +13,21 @@ from ragcore.interfaces import Generator, Message
 from ragcore.types import Answer, Citation, Hit
 
 IDK = "I don't know. The available sources don't cover this."
-CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
+# [1], [1, 3] and ranges such as [1-3] or [2–4], which models write even when told not to.
+CITATION = re.compile(r"\[(\d+(?:\s*[-–,]\s*\d+)*)\]")
+MAX_RANGE = 10        # a "range" wider than this is not a citation (a year span, a typo)
+
+
+def cited_numbers(group: str) -> list[int]:
+    """The source numbers inside one citation bracket, with ranges expanded."""
+    numbers: list[int] = []
+    for part in re.split(r"\s*,\s*", group):
+        bounds = [int(n) for n in re.split(r"\s*[-–]\s*", part) if n]
+        if len(bounds) == 2 and 0 <= bounds[1] - bounds[0] <= MAX_RANGE:
+            numbers.extend(range(bounds[0], bounds[1] + 1))
+        elif len(bounds) == 1:
+            numbers.append(bounds[0])
+    return numbers
 DECLINED = re.compile(r"\b(i (?:do not|don't|dont) know|no lo s[eé]|not (?:covered|mentioned|stated) in the sources"
                       r"|sources (?:do not|don't) (?:contain|cover|mention|say|provide|include))", re.IGNORECASE)
 
@@ -55,8 +69,7 @@ def check_answer(text: str, hits: Sequence[Hit]) -> tuple[str, list[Citation], s
     cited: list[int] = []
 
     def keep_valid(match: re.Match) -> str:
-        numbers = [int(n) for n in re.split(r"\s*,\s*", match.group(1))]
-        valid = [n for n in numbers if 1 <= n <= len(hits)]
+        valid = [n for n in cited_numbers(match.group(1)) if 1 <= n <= len(hits)]
         cited.extend(valid)
         return f"[{', '.join(map(str, valid))}]" if valid else ""
 

@@ -6,7 +6,7 @@ from ragcore.generators.generators import FakeGenerator
 from ragcore.pipeline.answer import IDK, build_messages, check_answer
 from ragcore.pipeline.retrieve import RetrievalSettings, evidence_is_weak, reciprocal_rank_fusion
 from ragcore.rerankers.rerankers import CallableReranker
-from ragcore.types import Chunk, Hit
+from ragcore.types import Chunk, ConversationState, Hit
 
 
 def hit(chunk_id: str, **scores) -> Hit:
@@ -87,6 +87,38 @@ def test_citations_are_checked_against_supplied_sources():
     assert check_answer("No lo sé.", hits)[2] == "model_declined"
     # A partial answer that cites what it does know is kept.
     assert check_answer("The cap is 5 days [1], but I don't know the deadline.", hits)[2] == ""
+
+
+def test_citation_ranges_count_as_citations():
+    hits = [hit("a"), hit("b"), hit("c")]
+    text, citations, reason = check_answer("Both rules apply [1-2]. See also [2–3, 9].", hits)
+    assert reason == "" and [c.n for c in citations] == [1, 2, 3]
+    assert text == "Both rules apply [1, 2]. See also [2, 3]."
+    assert check_answer("Between [2019-2024] it changed.", hits)[2] == "no_citations"   # not a source range
+
+
+def test_chat_embeds_each_question_once(rag):
+    calls: list[str] = []
+    original = rag.embedder.embed_query
+
+    def counting(text):
+        calls.append(text)
+        return original(text)
+
+    rag.embedder.embed_query = counting
+    state = ConversationState()
+    rag.chat(state, "How many days of annual leave do employees receive?")
+    rag.chat(state, "By the way, what does EXP-204 mean?")
+    assert calls == ["How many days of annual leave do employees receive?", "what does EXP-204 mean?"]
+
+
+def test_cross_encoder_loads_its_model_only_when_it_reranks():
+    from ragcore.rerankers.rerankers import CrossEncoderReranker
+
+    reranker = CrossEncoderReranker("an/unknown-model-that-would-fail-to-download")
+    assert reranker._model is None and reranker.name == "cross_encoder:an/unknown-model-that-would-fail-to-download"
+    assert reranker.rerank("q", [], top_k=4) == []           # nothing to rerank: still no model loaded
+    assert reranker._model is None
 
 
 def test_ask_answers_with_citations(rag):

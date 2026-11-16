@@ -103,6 +103,8 @@ class Resolved:
     topic_switched: bool
     similarity: float | None = None
     """Cosine similarity between this question and the running topic (None on the first turn)."""
+    vector: list[float] | None = None
+    """The query embedding of ``question``, so retrieval does not embed it a second time."""
 
 
 def resolve(message: str, state: ConversationState, *, generator: Generator | None, embed_query,
@@ -116,27 +118,31 @@ def resolve(message: str, state: ConversationState, *, generator: Generator | No
 
     if marker:
         question = message[marker.end():].strip() or message
-        vector = embed_query(question)
+        vector = list(embed_query(question))
         similarity = similarity_to_topic(vector)
         _reset_topic(state, vector)
-        return Resolved(question=question, rewritten=False, topic_switched=not first_turn, similarity=similarity)
+        return Resolved(question=question, rewritten=False, topic_switched=not first_turn, similarity=similarity,
+                        vector=vector)
     if first_turn:
-        state.topic_vector = list(embed_query(message))
-        return Resolved(question=message, rewritten=False, topic_switched=False)
+        vector = list(embed_query(message))
+        state.topic_vector = list(vector)
+        return Resolved(question=message, rewritten=False, topic_switched=False, vector=vector)
     question = message
     if depends_on_context(message) and generator is not None:
         question = rewrite_question(message, state, generator, settings)
     rewritten = question != message
-    vector = embed_query(question)
+    vector = list(embed_query(question))
     similarity = similarity_to_topic(vector)
     # A short fragment that could not be rewritten ("And for Stockholm?") says nothing about the topic on its
     # own, so it is taken as a continuation. Anything else is compared with the running topic.
     judgeable = rewritten or not depends_on_context(message) or len(message.split()) > 8
     if judgeable and similarity is not None and similarity < settings.topic_switch_threshold:
         _reset_topic(state, vector)
-        return Resolved(question=question, rewritten=rewritten, topic_switched=True, similarity=similarity)
+        return Resolved(question=question, rewritten=rewritten, topic_switched=True, similarity=similarity,
+                        vector=vector)
     _track_topic(state, vector)
-    return Resolved(question=question, rewritten=rewritten, topic_switched=False, similarity=similarity)
+    return Resolved(question=question, rewritten=rewritten, topic_switched=False, similarity=similarity,
+                    vector=vector)
 
 
 def _reset_topic(state: ConversationState, vector: Sequence[float]) -> None:
